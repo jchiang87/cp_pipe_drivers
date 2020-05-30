@@ -21,7 +21,7 @@ class VisitSelector:
         for visit in set(self.df['visit']):
             query = f'visit=={visit}'
             if selection is not None:
-                query = ' and '.((query, f'({selection})'))
+                query = ' and '.join((query, f'({selection})'))
             if len(self.df.query(query) == num_ccds):
                 visits.append(visit)
         return sorted(visits)

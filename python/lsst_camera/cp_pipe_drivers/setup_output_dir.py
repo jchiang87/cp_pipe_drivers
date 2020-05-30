@@ -10,8 +10,8 @@ def setup_output_dir(root_repo, output_dir):
 
     repository_cfg = os.path.join(output_dir, 'repositoryCfg.yaml')
     with open(repository_cfg, 'w') as output:
-        output.write(f'''!RepositoryCfg_v1
-_mapper: &id001 !!python/name:{mapper} ''
+        output.write("""!RepositoryCfg_v1
+_mapper: &id001 !!python/name:%(mapper)s ''
 _mapperArgs: {}
 _parents:
 - !RepositoryCfg_v1
@@ -19,9 +19,9 @@ _parents:
   _mapperArgs: {}
   _parents: []
   _policy: null
-  _root: {root_repo}
+  _root: %(root_repo)s
   dirty: true
 _policy: null
 _root: null
 dirty: true
-''')
+""" % locals())

@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 import os
 import subprocess
-from lsst_camera.cp_pipe_drivers import VisitSelector, setup_output_dir
+from lsst_camera.cp_pipe_drivers import VisitSelector
 
 repo = '/lsstdata/offline/teststand/BOT/gen2repo'
 
-imageType = 'BIAS'
+imageType = 'DARK'
 raftName = 'R22'
-run = '6790D'
-selection = (f'imageType=="{imageType}" and run=="{run}" '
+expTime = 17
+selection = (f'imageType=="{imageType}" and expTime=={expTime} '
              f'and raftName="{raftName}"')
 
 visit_selector = VisitSelector(repo, selection)
@@ -16,21 +16,17 @@ visit_selector = VisitSelector(repo, selection)
 visit_list = '^'.join([str(_) for _ in visit_selector(num_ccds=9)][:3])
 
 outdir = 'calib_products'
-try:
-    setup_output_dir(repo, outdir)
-except OSError:
-    pass
 
-rerun_folder = 'bias_calibs'
+rerun_folder = 'dark_calibs'
 
-command = (f'constructBias.py {outdir} --rerun {rerun_folder} --longlog --id '
+command = (f'constructDark.py {outdir} --rerun {rerun_folder} --longlog --id '
            f'raftName={raftName} visit={visit_list} --batch-type none '
-           '--config isr.doCrosstalk=False --clobber-config')
+           '--config isr.doCrosstalk=False --clobber-config --calib CALIB')
 print(command)
 subprocess.check_call(command, shell=True)
 
 rerun_path = os.path.join(outdir, 'rerun', rerun_folder)
-file_pattern = os.path.join(rerun_path, 'bias', '*', 'bias-*')
+file_pattern = os.path.join(rerun_path, 'dark', '*', 'dark-*')
 command = (f'ingestCalibs.py {rerun_path} --output CALIB --validity 4000 '
            f'{file_pattern} --mode copy')
 print(command)
