@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 import os
 import subprocess
-from lsst_camera.cp_pipe_drivers import VisitSelector
+import lsst_camera.cp_pipe_drivers as cpd
 
 repo = '/lsstdata/offline/teststand/BOT/gen2repo'
 
 imageType = 'DARK'
 raftName = 'R22'
-expTime = 17
-selection = (f'imageType=="{imageType}" and expTime=={expTime} '
+run = '6813D'
+selection = (f'imageType=="{imageType}" and run=="{run}" '
              f'and raftName="{raftName}"')
 
-visit_selector = VisitSelector(repo, selection)
+visit_dict = cpd.VisitDict(repo, selection)
 
-visit_list = '^'.join([str(_) for _ in visit_selector(num_ccds=9)][:3])
+visit_list = '^'.join([str(_) for _ in sorted(list(visit_dict.keys()))])
 
 outdir = 'calib_products'
 

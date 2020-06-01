@@ -1,23 +1,23 @@
 #!/usr/bin/env python
 import os
 import subprocess
-from lsst_camera.cp_pipe_drivers import VisitSelector, setup_output_dir
+import lsst_camera.cp_pipe_drivers as cpd
 
 repo = '/lsstdata/offline/teststand/BOT/gen2repo'
 
 imageType = 'BIAS'
 raftName = 'R22'
-run = '6790D'
+run = '6813D'
 selection = (f'imageType=="{imageType}" and run=="{run}" '
              f'and raftName="{raftName}"')
 
-visit_selector = VisitSelector(repo, selection)
+visit_dict = cpd.VisitDict(repo, selection)
 
-visit_list = '^'.join([str(_) for _ in visit_selector(num_ccds=9)][:3])
+visit_list = '^'.join([str(_) for _ in sorted(list(visit_dict.keys()))[10:20]])
 
 outdir = 'calib_products'
 try:
-    setup_output_dir(repo, outdir)
+    cpd.setup_output_dir(repo, outdir)
 except OSError:
     pass
 
