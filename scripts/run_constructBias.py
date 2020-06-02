@@ -13,7 +13,9 @@ selection = (f'imageType=="{imageType}" and run=="{run}" '
 
 visit_dict = cpd.VisitDict(repo, selection)
 
-visit_list = '^'.join([str(_) for _ in sorted(list(visit_dict.keys()))[10:20]])
+visits = sorted(list(visit_dict.keys()))
+visit_list = '^'.join([str(_) for _ in (visits[11:20] + visits[33:42]
+                                        + visits[53:62])])
 
 outdir = 'calib_products'
 try:
