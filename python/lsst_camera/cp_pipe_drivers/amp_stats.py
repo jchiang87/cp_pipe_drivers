@@ -1,3 +1,6 @@
+"""
+Module to compute amp-wise mean and stdev statistics.
+"""
 import sys
 from collections import defaultdict
 import numpy as np
@@ -8,40 +11,94 @@ import lsst.geom
 import lsst.afw.math as afwMath
 
 
-__all__ = ['get_raw_amp_stats']
+__all__ = ['get_stats', 'OverscanHandler', 'get_raw_amp_stats']
 
 
-def get_overscan_stats(image, amp_info):
+def get_stats(image, nsigma=10):
     """
-    Compute the mean and standard deviation of the serial overscan
-    pixels for an amp.  Corrections are made for non-standard overscan
-    sizes.
-
     Parameters
     ----------
     image: lsst.afw.image.Image
-        The full imaging section of the amplifier.
-    amp_info: lsst.afw.cameraGeom.AmpInfoRecord
-        Object containing the amplifier pixel geometry.
+        Image object for which to compute the clipped mean and clipped
+        stdev.
+    nsigma: int [10]
+        Value to use for sigma clipping.
 
     Returns
     -------
-    (float, float): Tuple of the (mean, stdev) of the overscan pixel values.
+    (float, float): Tuple of the (mean, stdev) of the pixel values.
     """
-    oscan_corners = amp_info.getRawHorizontalOverscanBBox().getCorners()
-    image_corners = image.getBBox().getCorners()
-    # Create a bounding box using the upper left corner of the full
-    # segment to guard against non-standard overscan region sizes.
-    bbox = lsst.geom.Box2I(oscan_corners[0], image_corners[2])
-    oscan = image.Factory(image, bbox)
-    stats = afwMath.makeStatistics(oscan, afwMath.MEAN | afwMath.STDEV)
-    return stats.getValue(afwMath.MEAN), stats.getValue(afwMath.STDEV)
+    stat_ctrl = afwMath.StatisticsControl(numSigmaClip=nsigma)
+    flags = afwMath.MEANCLIP | afwMath.STDEVCLIP
+    stats = afwMath.makeStatistics(image, flags=flags, sctrl=stat_ctrl)
+    return stats.getValue(afwMath.MEANCLIP), stats.getValue(afwMath.STDEVCLIP)
 
 
-def get_raw_amp_stats(butler, dataId, nsigma=5):
+class OverscanHandler:
+    def __init__(self, image, amp_info):
+        """
+        Parameters
+        ----------
+        image: lsst.afw.image.Image
+            The full imaging section of the amplifier.
+        amp_info: lsst.afw.cameraGeom.AmpInfoRecord
+            Object containing the amplifier pixel geometry.
+        """
+        self.image = image
+        self.amp_info = amp_info
+        oscan_corners = amp_info.getRawHorizontalOverscanBBox().getCorners()
+        image_corners = image.getBBox().getCorners()
+        # Create a bounding box using the upper left corner of the full
+        # segment to guard against non-standard overscan region sizes.
+        bbox = lsst.geom.Box2I(oscan_corners[0], image_corners[2])
+        self.oscan = image.Factory(image, bbox)
+
+    def get_stats(self, nsigma=10):
+        """
+        Return the clipped mean and clipped stdev of the serial
+        overscan pixels.
+        """
+        return get_stats(self.oscan, nsigma=nsigma)
+
+    def row_medians(self):
+        """
+        Return an array of row medians.
+        """
+        return np.median(self.oscan.array, axis=1)
+
+    def overscan_corrected_image(self):
+        """
+        Return the overscan-corrected imaging section for the amp.
+        """
+        # Make a deep copy to modify and return, excluding the
+        # overscan pixels.
+        my_image = self.image.Factory(self.image,
+                                      self.amp_info.getRawDataBBox(),
+                                      deep=True)
+        ny, nx = my_image.array.shape
+        for row, value in zip(range(ny), self.row_medians()):
+            my_image.array[row, :] -= value
+        return my_image
+
+
+def get_raw_amp_stats(butler, dataId, nsigma=10, subtract_oscan=True):
     """
-    run, expId, raftName, detectorName, channel, seqfile, expTime,
-    imageType, testType
+    Parameters
+    ----------
+    butler: lsst.daf.persistence.Butler
+        The data butler for the desired repo.
+    dataId: dict
+        Dictionary identifying the subset of data to process.
+    nsigma: float [10]
+        Value to use for sigma-clipping.
+    subtract_oscan: bool [True]
+        Flag to perform (row-wise) overscan correction.
+
+    Returns
+    -------
+    pandas.DataFrame with columns for run, expId, raftName,
+    detectorName, channel, seqfile, expTime, imageType, testType,
+    imaging section mean, imaging section stdev.
     """
     header_keys = dict(expTime='EXPTIME', imageType='IMGTYPE',
                        testType='TESTTYPE', mjd_obs='MJD-OBS')
@@ -56,14 +113,14 @@ def get_raw_amp_stats(butler, dataId, nsigma=5):
         det = amp_exp.getDetector()
         channel = dataref.dataId['channel']
         amp_info = list(det)[channel-1]
-        oscan_mean, oscan_stdev \
-            = get_overscan_stats(amp_exp.getImage(), amp_info)
-        threshold = oscan_mean + nsigma*oscan_stdev
-        image = amp_exp.getImage().Factory(amp_exp.getImage(),
-                                           amp_info.getRawDataBBox())
-        index = np.where(image.array < threshold)
-        mean = np.mean(image.array[index])
-        stdev = np.std(image.array[index])
+        oscan_handler = OverscanHandler(amp_exp.getImage(), amp_info)
+        oscan_mean, oscan_stdev = oscan_handler.get_stats(nsigma=nsigma)
+        if subtract_oscan:
+            image = oscan_handler.overscan_corrected_image()
+        else:
+            image = amp_exp.getImage().Factory(amp_exp.getImage(),
+                                               amp_info.getRawDataBBox())
+        mean, stdev = get_stats(image, nsigma=nsigma)
         data['mean'].append(mean)
         data['stdev'].append(stdev)
         for key, value in dataref.dataId.items():
